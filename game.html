@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Dodge — built from one prompt</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0612; overflow: hidden; }
+  canvas { display: block; margin: 0 auto; background: #0b0612; touch-action: none; }
+  #hint {
+    position: fixed; left: 0; right: 0; bottom: 14px; text-align: center;
+    color: #8f86a3; font: 14px/1.4 system-ui, sans-serif; letter-spacing: .08em;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="480" height="720"></canvas>
+<div id="hint">← → MOVE &nbsp;·&nbsp; DODGE THE BLOCKS &nbsp;·&nbsp; R RESTARTS</div>
+<script>
+'use strict';
+// Neon Dodge: one prompt, one file, no installs.
+// Move with arrow keys (or drag on touch). Dodge the falling blocks.
+// Every second survived is a point. One hit ends the run.
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+
+const player = { x: W / 2, y: H - 90, w: 46, h: 18, speed: 340 };
+let blocks = [], score = 0, best = 0, over = false, started = false;
+let spawnTimer = 0, elapsed = 0, last = performance.now();
+const keys = {};
+
+function spawnBlock() {
+  const w = 28 + Math.random() * 54;
+  blocks.push({
+    x: Math.random() * (W - w), y: -40, w,
+    h: 18 + Math.random() * 22,
+    v: 190 + elapsed * 9 + Math.random() * 60,
+    hue: Math.random() < 0.5 ? '#ff2d95' : '#22d3ee'
+  });
+}
+
+function reset() {
+  blocks = []; score = 0; elapsed = 0; spawnTimer = 0;
+  over = false; started = true;
+  player.x = W / 2;
+}
+
+function hit(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function step(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (started && !over) {
+    elapsed += dt;
+    score = Math.floor(elapsed);
+    if (keys.ArrowLeft || keys.a) player.x -= player.speed * dt;
+    if (keys.ArrowRight || keys.d) player.x += player.speed * dt;
+    player.x = Math.max(8, Math.min(W - player.w - 8, player.x));
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) { spawnBlock(); spawnTimer = Math.max(0.22, 0.62 - elapsed * 0.008); }
+    for (const b of blocks) b.y += b.v * dt;
+    blocks = blocks.filter(b => b.y < H + 60);
+    const me = { x: player.x, y: player.y, w: player.w, h: player.h };
+    if (blocks.some(b => hit(me, b))) { over = true; best = Math.max(best, score); }
+  }
+  draw();
+  requestAnimationFrame(step);
+}
+
+function draw() {
+  ctx.fillStyle = '#0b0612';
+  ctx.fillRect(0, 0, W, H);
+  // starfield grid
+  ctx.strokeStyle = 'rgba(120, 90, 200, 0.14)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y <= H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  // blocks
+  for (const b of blocks) {
+    ctx.fillStyle = b.hue;
+    ctx.shadowColor = b.hue; ctx.shadowBlur = 18;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+  }
+  ctx.shadowBlur = 0;
+  // player ship
+  ctx.fillStyle = '#f5f0ff';
+  ctx.shadowColor = '#c084fc'; ctx.shadowBlur = 22;
+  ctx.beginPath();
+  ctx.moveTo(player.x + player.w / 2, player.y);
+  ctx.lineTo(player.x + player.w, player.y + player.h);
+  ctx.lineTo(player.x, player.y + player.h);
+  ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0;
+  // score
+  ctx.fillStyle = '#f5f0ff';
+  ctx.font = '700 34px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('SCORE ' + score, 18, 46);
+  ctx.fillStyle = '#8f86a3';
+  ctx.font = '600 16px system-ui, sans-serif';
+  ctx.fillText('BEST ' + best, 18, 72);
+  if (!started) {
+    ctx.fillStyle = 'rgba(11, 6, 18, 0.72)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#f5f0ff';
+    ctx.font = '800 44px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('NEON DODGE', W / 2, H / 2 - 30);
+    ctx.fillStyle = '#22d3ee';
+    ctx.font = '600 19px system-ui, sans-serif';
+    ctx.fillText('one prompt. one game.', W / 2, H / 2 + 6);
+    ctx.fillStyle = '#f5f0ff';
+    ctx.font = '700 20px system-ui, sans-serif';
+    ctx.fillText('PRESS SPACE TO PLAY', W / 2, H / 2 + 58);
+  }
+  if (over) {
+    ctx.fillStyle = 'rgba(11, 6, 18, 0.66)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ff2d95';
+    ctx.font = '800 46px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', W / 2, H / 2 - 20);
+    ctx.fillStyle = '#f5f0ff';
+    ctx.font = '700 24px system-ui, sans-serif';
+    ctx.fillText('SCORE ' + score + '  ·  BEST ' + best, W / 2, H / 2 + 22);
+    ctx.fillStyle = '#8f86a3';
+    ctx.font = '600 18px system-ui, sans-serif';
+    ctx.fillText('press R to run it back', W / 2, H / 2 + 58);
+  }
+}
+
+addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === ' ' && !started) reset();
+  if ((e.key === 'r' || e.key === 'R') && over) reset();
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') e.preventDefault();
+});
+addEventListener('keyup', e => { keys[e.key] = false; });
+cv.addEventListener('pointermove', e => {
+  const r = cv.getBoundingClientRect();
+  const x = (e.clientX - r.left) * (W / r.width);
+  player.x = Math.max(8, Math.min(W - player.w - 8, x - player.w / 2));
+  if (!started) reset();
+});
+requestAnimationFrame(step);
+</script>
+</body>
+</html>
